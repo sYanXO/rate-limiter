@@ -76,3 +76,8 @@ func main() {
 		time.Sleep(200 * time.Millisecond) // request rate
 	}
 }
+
+// add redis
+// functioning backend
+// stress test hard
+// maybe atomic
