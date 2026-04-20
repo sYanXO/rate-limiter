@@ -73,6 +73,6 @@ func main() {
 			fmt.Printf("Request %d : not allowed\n", i+1)
 		}
 
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond) // request rate
 	}
 }
