@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -57,7 +59,7 @@ func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
 }
 
 func (rl *RedisRateLimiter) Allow(ctx context.Context, key string, maxTokens float64, refillRate float64, requested float64) (bool, error) {
-	now := float64(time.Now().Unix()) / 1e9 // unix gives in seconds but time.now is in nanoseconds, its a hacky way to fix this indifference
+	now := float64(time.Now().UnixNano()) / 1e9 // unix gives in seconds but time.now is in nanoseconds, its a hacky way to fix this indifference
 	result, err := rl.script.Run(ctx, rl.client, []string{key}, maxTokens, refillRate, now, requested).Result()
 
 	if err != nil {
@@ -66,35 +68,57 @@ func (rl *RedisRateLimiter) Allow(ctx context.Context, key string, maxTokens flo
 	return result.(int64) == 1, nil
 
 }
+
+// ratelimit middlewqrawe
+
+func RateLimitMiddleware(limiter *RedisRateLimiter, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			clientIP = r.RemoteAddr // Fallback just in case
+		}
+		key := "ratelimit:" + clientIP
+
+		allowed, err := limiter.Allow(ctx, key, 5, 1, 1)
+
+		if err != nil {
+			fmt.Printf("Redis Error : %v", err)
+			next(w, r)
+			return
+		}
+
+		if !allowed {
+			http.Error(w, "429 Too many Requests", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// secver code
+
 func main() {
-	fmt.Println("Distributed Redis Rate Limiter Demo : ")
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
 
-	ctx := context.Background()
-
 	limiter := NewRedisRateLimiter(rdb)
 
-	userID := "user1" // in prod this maybe IP_address or API_token
-
-	for i := 0; i < 10; i++ {
-		// Max 5 tokens, refills 1 token per second, asking for 1 token
-		allowed, err := limiter.Allow(ctx, "ratelimit:"+userID, 5, 1, 1)
-		if err != nil {
-			fmt.Printf("Redis error : %v\n", err)
-			continue
-		}
-
-		if allowed {
-			fmt.Printf("Request %d : allowed \n", i+1)
-		} else {
-			fmt.Printf("Request %d : blocked \n", i+1)
-		}
-
-		time.Sleep(200 * time.Millisecond)
+	helloWorldHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // same as res.send("message") in TS
+		w.Write([]byte("Success!"))
 	}
+
+	http.HandleFunc("/api/data", RateLimitMiddleware(limiter, helloWorldHandler))
+
+	fmt.Println("Server runing on port 8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		fmt.Printf("Server failed to start: %v\n", err)
+	}
+
 }
 
 // add redis - done
