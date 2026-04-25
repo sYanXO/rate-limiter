@@ -122,6 +122,5 @@ func main() {
 }
 
 // add redis - done
-// functioning backend
-// stress test hard
-// maybe atomic
+// functioning backend -done
+// stress test hard - done
