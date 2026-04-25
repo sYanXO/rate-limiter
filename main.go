@@ -97,7 +97,7 @@ func main() {
 	}
 }
 
-// add redis
+// add redis - done
 // functioning backend
 // stress test hard
 // maybe atomic
